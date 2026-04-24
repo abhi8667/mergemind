@@ -55,9 +55,8 @@ def train_qlearning(args: argparse.Namespace) -> dict[str, Any]:
                     qtable[next_key] = [0.0 for _ in ACTIONS]
                 action_index = ACTIONS.index(actions[car_id])
                 best_next = max(qtable[next_key])
-                qtable[key][action_index] = (1 - args.alpha) * qtable[key][action_index] + args.alpha * (
-                    reward + args.gamma * best_next
-                )
+                td_target = reward + args.gamma * best_next
+                qtable[key][action_index] = (1 - args.alpha) * qtable[key][action_index] + args.alpha * td_target
             obs = next_obs
         reward_history.append(episode_reward)
         collision_history.append(info.get("total_collisions", 0))

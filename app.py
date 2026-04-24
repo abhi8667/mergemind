@@ -42,7 +42,9 @@ def compare_policies() -> tuple[gr.Plot, str]:
     policy_path = Path("outputs/policy.json")
     if policy_path.exists():
         qtable = load_qtable(str(policy_path))
-        results["trained"] = run_policy(env, lambda obs: qtable_policy(obs, qtable), episodes=10)
+        results["trained"] = run_policy(
+            env, lambda obs: qtable_policy(obs, qtable), episodes=10
+        )
     chart = build_comparison_chart(results)
     table = json.dumps(results, indent=2)
     return chart, table

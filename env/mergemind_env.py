@@ -79,7 +79,7 @@ class MergeMindEnv:
         self.step_count += 1
         observations = {car_id: self._observe(car) for car_id, car in self.cars.items() if not car.done}
         rewards: dict[str, RewardBreakdown] = {}
-        lane_updates: dict[str, tuple[str, int, int, str]] = {}
+        lane_updates: dict[str, tuple[str, str, int, int, str]] = {}
         collision_ids: set[str] = set()
 
         for car_id, car in self.cars.items():
@@ -89,6 +89,7 @@ class MergeMindEnv:
             if action not in ACTIONS:
                 action = "hold_speed"
             original_position = car.position
+            original_lane = car.lane
             if action == "accelerate":
                 car.speed = min(self.max_speed, car.speed + 1)
             elif action in {"brake", "yield"}:
@@ -107,14 +108,14 @@ class MergeMindEnv:
                 car.lane = "right"
 
             new_position = car.position + car.speed
-            lane_updates[car_id] = (car.lane, original_position, new_position, action)
+            lane_updates[car_id] = (original_lane, car.lane, original_position, new_position, action)
 
         occupancy: dict[tuple[str, int], str] = {}
-        for car_id, (lane, original_position, new_position, action) in lane_updates.items():
+        for car_id, (original_lane, lane, original_position, new_position, action) in lane_updates.items():
             car = self.cars[car_id]
             if car.done:
                 continue
-            if lane == "right" and new_position >= self.merge_point:
+            if lane == "right" and new_position > self.merge_point:
                 collision_ids.add(car_id)
                 continue
             if new_position >= self.lane_length:
@@ -143,10 +144,10 @@ class MergeMindEnv:
                 pass
             if car_id not in lane_updates:
                 continue
-            lane, old_position, new_position, action = lane_updates[car_id]
+            original_lane, lane, old_position, new_position, action = lane_updates[car_id]
             obs = observations.get(car_id, {})
             progress = max(0, new_position - old_position)
-            merged = action.startswith("merge") and lane == "left"
+            merged = action.startswith("merge") and original_lane == "right" and lane == "left"
             courtesy = action == "yield" and obs.get("right_car_waiting")
             block = action == "block" and obs.get("right_car_waiting") and obs.get("lane") == "left"
             tailgating = obs.get("front_gap", 2) <= 1 and car.speed > 0
@@ -196,7 +197,7 @@ class MergeMindEnv:
         return all(car.done for car in self.cars.values())
 
     def _merge_options(self, car: CarState) -> tuple[bool, bool]:
-        if car.position >= self.merge_point:
+        if car.position > self.merge_point:
             return False, False
         if car.lane == "right":
             return self._lane_free("left", car.position), False
