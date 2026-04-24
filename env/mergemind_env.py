@@ -140,8 +140,6 @@ class MergeMindEnv:
         global_clear = self._all_cleared() and self.collision_count == 0
         rewards_out: dict[str, float] = {}
         for car_id, car in self.cars.items():
-            if car.done and not car.collided and car.position >= self.lane_length:
-                pass
             if car_id not in lane_updates:
                 continue
             original_lane, lane, old_position, new_position, action = lane_updates[car_id]

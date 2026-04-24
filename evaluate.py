@@ -35,13 +35,13 @@ def run_policy(env: MergeMindEnv, policy: PolicyFn, episodes: int) -> dict[str, 
         throughput_total += info.get("throughput", 0)
         courtesy_total += info.get("courtesy_events", 0)
         reward_total += episode_reward
-    episodes = max(1, episodes)
+    safe_episodes = max(1, episodes)
     return {
-        "collision_rate": collision_total / episodes,
-        "average_merge_time": steps_total / episodes,
-        "throughput": throughput_total / episodes,
-        "courtesy_score": courtesy_total / episodes,
-        "reward_score": reward_total / episodes,
+        "collision_rate": collision_total / safe_episodes,
+        "average_merge_time": steps_total / safe_episodes,
+        "throughput": throughput_total / safe_episodes,
+        "courtesy_score": courtesy_total / safe_episodes,
+        "reward_score": reward_total / safe_episodes,
     }
 
 

@@ -56,7 +56,9 @@ def train_qlearning(args: argparse.Namespace) -> dict[str, Any]:
                 action_index = ACTIONS.index(actions[car_id])
                 best_next = max(qtable[next_key])
                 td_target = reward + args.gamma * best_next
-                qtable[key][action_index] = (1 - args.alpha) * qtable[key][action_index] + args.alpha * td_target
+                current_q = qtable[key][action_index]
+                updated_q = (1 - args.alpha) * current_q + args.alpha * td_target
+                qtable[key][action_index] = updated_q
             obs = next_obs
         reward_history.append(episode_reward)
         collision_history.append(info.get("total_collisions", 0))
@@ -135,7 +137,8 @@ def train_with_trl(args: argparse.Namespace) -> dict[str, Any]:
             next_obs, rewards, done, _info = env.step(actions)
             reward_list = [rewards.get(car_id, 0.0) for car_id in action_map.keys()]
             episode_reward += float(np.sum(reward_list))
-            trainer.step(query_tensors, response_tensors, reward_list)
+            reward_tensor = torch.tensor(reward_list, dtype=torch.float32, device=query_tensors.device)
+            trainer.step(query_tensors, response_tensors, reward_tensor)
             obs = next_obs
         reward_history.append(episode_reward)
 
