@@ -1,0 +1,15 @@
+name: MergeMind
+version: 0.1.0
+entrypoint: env.mergemind_env:MergeMindEnv
+max_episode_steps: 40
+description: Semantic multi-agent highway merge benchmark for cooperative LLM behavior.
+observation_format: json
+action_space:
+  - accelerate
+  - brake
+  - hold_speed
+  - merge_left
+  - merge_right
+  - yield
+  - block
+  - signal_merge
