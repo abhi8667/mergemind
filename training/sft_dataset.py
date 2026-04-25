@@ -7,7 +7,7 @@ import random
 import time
 from pathlib import Path
 from typing import Any
-from urllib import request
+from urllib import error, request
 
 from policy.agent import ALLOWED_ACTIONS, parse_action
 from policy.prompt_builder import build_llm_prompt
@@ -68,9 +68,18 @@ def _call_openai(prompt: str, model: str, api_key: str, max_tokens: int) -> str:
             "Content-Type": "application/json",
         },
     )
-    with request.urlopen(req, timeout=60) as response:
-        body = json.loads(response.read().decode("utf-8"))
-    return body["choices"][0]["message"]["content"]
+    try:
+        with request.urlopen(req, timeout=60) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8")
+        raise RuntimeError(f"OpenAI API error: {detail}") from exc
+    except error.URLError as exc:
+        raise RuntimeError(f"OpenAI connection failed: {exc.reason}") from exc
+    choices = body.get("choices", [])
+    if not choices or "message" not in choices[0]:
+        raise RuntimeError(f"Unexpected OpenAI response: {body}")
+    return choices[0]["message"]["content"]
 
 
 def _generate_response(prompt: str, model: str, api_key: str) -> str:
