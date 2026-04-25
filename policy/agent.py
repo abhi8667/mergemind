@@ -14,6 +14,12 @@ ALLOWED_ACTIONS: list[str] = [
 ACTION_REGEX = re.compile(r"ACTION:\s*([A-Z_]+)")
 
 
+class ActionParser:
+    @staticmethod
+    def parse(raw_text: str | None) -> tuple[str, bool]:
+        return parse_action(raw_text)
+
+
 def parse_action(raw_text: str | None) -> tuple[str, bool]:
     if not raw_text:
         return "MAINTAIN", True
