@@ -75,7 +75,7 @@ def compute_reward(
     if survived:
         survival_metric += config.survival_bonus
     reward.survival = config.weights.survival * survival_metric
-    throughput_metric = avg_speed / max(1, max_speed)
+    throughput_metric = avg_speed / max_speed if max_speed > 0 else 0.0
     reward.throughput = config.weights.throughput * throughput_metric
     reward.altruism = config.weights.altruism if altruism else 0.0
     reward.reasoning_quality = config.weights.reasoning if reasoning_quality else 0.0

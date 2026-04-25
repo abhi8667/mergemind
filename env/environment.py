@@ -253,7 +253,6 @@ class MergeMindEnv:
             "total_collisions": self.collision_count,
             "throughput": self._cleared_count(),
             "altruism_events": self.altruism_events,
-            "courtesy_events": self.altruism_events,
             "global_clear": global_clear,
             "avg_speed": avg_speed,
             "step": self.step_count,
