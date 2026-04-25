@@ -45,7 +45,7 @@ def _random_mesh_broadcasts(rng: random.Random) -> dict[str, dict[str, str]]:
         position = rng.randint(0, 6)
         action = rng.choice(ALLOWED_ACTIONS)
         reasoning = (
-            f"MESH BROADCAST pos={position} intent={action} "
+            f"MESH BROADCAST id={agent_id} pos={position} intent={action} "
             f"gap={rng.randint(1, 4)}"
         )
         broadcasts[agent_id] = {"action": action, "reasoning": reasoning}
@@ -82,14 +82,33 @@ def _call_openai(prompt: str, model: str, api_key: str, max_tokens: int) -> str:
     return choices[0]["message"]["content"]
 
 
-def _generate_response(prompt: str, model: str, api_key: str, max_tokens: int) -> str:
+def _fallback_reasoning(vehicle_state: dict[str, Any], scenario: str) -> str:
+    lane = vehicle_state.get("lane", "unknown")
+    speed = vehicle_state.get("speed", 0)
+    front_gap = vehicle_state.get("front_gap", "unknown")
+    merge_distance = vehicle_state.get("merge_distance", "unknown")
+    return (
+        f"Maintain a {front_gap} gap in the {lane} lane at speed {speed} "
+        f"while approaching merge distance {merge_distance} in {scenario}."
+    )
+
+
+def _generate_response(
+    prompt: str,
+    model: str,
+    api_key: str,
+    max_tokens: int,
+    vehicle_state: dict[str, Any],
+    scenario: str,
+) -> str:
     raw_response = _call_openai(prompt, model, api_key, max_tokens=max_tokens)
     raw_response = raw_response.strip()
     action, parse_failure = parse_action(raw_response)
     if "REASONING:" not in raw_response or "ACTION:" not in raw_response:
         parse_failure = True
     if parse_failure:
-        return f"REASONING: Follow the mesh broadcasts to stay safe. ACTION: {action}"
+        fallback = _fallback_reasoning(vehicle_state, scenario)
+        return f"REASONING: {fallback} ACTION: {action}"
     return raw_response
 
 
@@ -111,7 +130,9 @@ def generate_dataset(
             vehicle_state = _random_vehicle_state(rng)
             mesh_broadcasts = _random_mesh_broadcasts(rng)
             prompt = build_llm_prompt(vehicle_state, mesh_broadcasts, scenario)
-            response = _generate_response(prompt, model, api_key, max_tokens)
+            response = _generate_response(
+                prompt, model, api_key, max_tokens, vehicle_state, scenario
+            )
             record = {"prompt": prompt, "response": response}
             handle.write(json.dumps(record) + "\n")
             if sleep_s > 0:

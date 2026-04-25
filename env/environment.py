@@ -17,7 +17,7 @@ from .rewards import RewardConfig, RewardBreakdown, compute_reward
 from .utils import ACTIONS, seed_everything
 
 LlmPolicy = Callable[[str], str]
-WORD_PATTERN = re.compile(r"\b\w+\b")
+REASONING_WORD_PATTERN = re.compile(r"\b\w+\b")
 
 
 @dataclass
@@ -56,6 +56,7 @@ class MergeMindEnv:
         self.max_steps = max_steps
         self.deterministic = deterministic
         self.reward_config = reward_config or RewardConfig()
+        # Kinematic minimum stopping distance: v^2 / (2 * a_max).
         decel_max = max(self.reward_config.deceleration_max, 0.1)
         self.safe_distance_lookup = {
             speed: (speed**2) / (2 * decel_max) for speed in range(self.max_speed + 1)
@@ -229,10 +230,7 @@ class MergeMindEnv:
             original_lane, lane, old_position, new_position, action = lane_updates[car_id]
             obs = observations.get(car_id, {})
             front_gap = obs.get("front_gap", self.lane_length - car.position)
-            safe_distance = self.safe_distance_lookup.get(car.speed)
-            if safe_distance is None:
-                decel_max = max(self.reward_config.deceleration_max, 0.1)
-                safe_distance = (car.speed**2) / (2 * decel_max)
+            safe_distance = self.safe_distance_lookup[car.speed]
             unsafe_gap = front_gap < safe_distance
             survived = new_position >= self.lane_length and not car.collided
             altruism = self._resolve_altruism_bonus(car_id)
@@ -326,8 +324,8 @@ class MergeMindEnv:
     def _reasoning_quality(self, reasoning: str, car_id: str) -> bool:
         if not reasoning:
             return False
-        words = WORD_PATTERN.findall(reasoning)
-        if len(words) <= self.reward_config.min_reasoning_words:
+        words = REASONING_WORD_PATTERN.findall(reasoning)
+        if len(words) < self.reward_config.min_reasoning_words:
             return False
         reasoning_lower = reasoning.lower()
         if "mesh" in reasoning_lower or "broadcast" in reasoning_lower:
