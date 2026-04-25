@@ -20,6 +20,7 @@ class RewardConfig:
     parse_failure_penalty: float = -0.1
     deceleration_max: float = 2.0
     throughput_idle_value: float = 0.0
+    min_reasoning_words: int = 20
 
 
 @dataclass

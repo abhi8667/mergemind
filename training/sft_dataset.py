@@ -82,8 +82,8 @@ def _call_openai(prompt: str, model: str, api_key: str, max_tokens: int) -> str:
     return choices[0]["message"]["content"]
 
 
-def _generate_response(prompt: str, model: str, api_key: str) -> str:
-    raw_response = _call_openai(prompt, model, api_key, max_tokens=120)
+def _generate_response(prompt: str, model: str, api_key: str, max_tokens: int) -> str:
+    raw_response = _call_openai(prompt, model, api_key, max_tokens=max_tokens)
     raw_response = raw_response.strip()
     action, parse_failure = parse_action(raw_response)
     if "REASONING:" not in raw_response or "ACTION:" not in raw_response:
@@ -101,6 +101,7 @@ def generate_dataset(
     api_key: str,
     sleep_s: float,
     seed: int,
+    max_tokens: int,
 ) -> None:
     rng = random.Random(seed)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +111,7 @@ def generate_dataset(
             vehicle_state = _random_vehicle_state(rng)
             mesh_broadcasts = _random_mesh_broadcasts(rng)
             prompt = build_llm_prompt(vehicle_state, mesh_broadcasts, scenario)
-            response = _generate_response(prompt, model, api_key)
+            response = _generate_response(prompt, model, api_key, max_tokens)
             record = {"prompt": prompt, "response": response}
             handle.write(json.dumps(record) + "\n")
             if sleep_s > 0:
@@ -124,6 +125,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--sleep-s", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=13)
+    parser.add_argument("--max-tokens", type=int, default=160)
     parser.add_argument("--api-key-env", type=str, default="OPENAI_API_KEY")
     return parser.parse_args()
 
@@ -140,6 +142,7 @@ def main() -> None:
         api_key=api_key,
         sleep_s=args.sleep_s,
         seed=args.seed,
+        max_tokens=args.max_tokens,
     )
 
 

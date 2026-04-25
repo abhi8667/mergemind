@@ -17,7 +17,6 @@ from .rewards import RewardConfig, RewardBreakdown, compute_reward
 from .utils import ACTIONS, seed_everything
 
 LlmPolicy = Callable[[str], str]
-MIN_REASONING_WORDS = 20
 WORD_PATTERN = re.compile(r"\b\w+\b")
 
 
@@ -48,6 +47,7 @@ class MergeMindEnv:
         reward_config: RewardConfig | None = None,
         llm_policy: LlmPolicy | None = None,
         scenario: str | None = None,
+        log_wandb: bool = True,
     ) -> None:
         self.lane_length = lane_length
         self.merge_point = merge_point
@@ -71,6 +71,7 @@ class MergeMindEnv:
         self.mesh_layer = MeshLayer()
         self.llm_policy = llm_policy or self._default_llm_policy
         self.scenario = scenario or "Two lanes merge into a single bottleneck."
+        self.log_wandb = log_wandb
 
     def seed(self, seed: int | None) -> None:
         self.rng = seed_everything(seed)
@@ -141,7 +142,7 @@ class MergeMindEnv:
             parse_failure_rate = parse_failure_count / max(1, len(parse_failures))
             self.parse_failure_total += parse_failure_count
             self.parse_failure_steps += len(parse_failures)
-            if wandb and getattr(wandb, "run", None):
+            if self.log_wandb and wandb and getattr(wandb, "run", None):
                 wandb.log(
                     {
                         "parse_failure_rate": parse_failure_rate,
@@ -326,7 +327,7 @@ class MergeMindEnv:
         if not reasoning:
             return False
         words = WORD_PATTERN.findall(reasoning)
-        if len(words) <= MIN_REASONING_WORDS:
+        if len(words) <= self.reward_config.min_reasoning_words:
             return False
         reasoning_lower = reasoning.lower()
         if "mesh" in reasoning_lower or "broadcast" in reasoning_lower:
