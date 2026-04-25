@@ -19,6 +19,7 @@ class RewardConfig:
     survival_bonus: float = 1.0
     parse_failure_penalty: float = -0.1
     deceleration_max: float = 2.0
+    throughput_idle_value: float = 0.0
 
 
 @dataclass
@@ -75,7 +76,9 @@ def compute_reward(
     if survived:
         survival_metric += config.survival_bonus
     reward.survival = config.weights.survival * survival_metric
-    throughput_metric = avg_speed / max_speed if max_speed > 0 else 0.0
+    throughput_metric = (
+        avg_speed / max_speed if max_speed > 0 else config.throughput_idle_value
+    )
     reward.throughput = config.weights.throughput * throughput_metric
     reward.altruism = config.weights.altruism if altruism else 0.0
     reward.reasoning_quality = config.weights.reasoning if reasoning_quality else 0.0

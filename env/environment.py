@@ -17,6 +17,7 @@ from .rewards import RewardConfig, RewardBreakdown, compute_reward
 from .utils import ACTIONS, seed_everything
 
 LlmPolicy = Callable[[str], str]
+MIN_REASONING_WORDS = 20
 
 
 @dataclass
@@ -318,7 +319,7 @@ class MergeMindEnv:
         if not reasoning:
             return False
         words = re.findall(r"\b\w+\b", reasoning)
-        if len(words) <= 20:
+        if len(words) <= MIN_REASONING_WORDS:
             return False
         reasoning_lower = reasoning.lower()
         if "mesh" in reasoning_lower or "broadcast" in reasoning_lower:
