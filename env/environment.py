@@ -222,11 +222,14 @@ class MergeMindEnv:
         response_lower = response_text.lower()
         action = next((act for act in ACTIONS if act in response_lower), "hold_speed")
         reasoning = ""
-        if "reasoning:" in response_lower:
-            reasoning_section = response_text[response_lower.index("reasoning:") + len("reasoning:") :]
+        reasoning_token = "reasoning:"
+        action_token = "action:"
+        if reasoning_token in response_lower:
+            start = response_lower.index(reasoning_token) + len(reasoning_token)
+            reasoning_section = response_text[start:]
             reasoning_lower = reasoning_section.lower()
-            if "action:" in reasoning_lower:
-                cut = reasoning_lower.index("action:")
+            if action_token in reasoning_lower:
+                cut = reasoning_lower.index(action_token)
                 reasoning = reasoning_section[:cut].strip()
             else:
                 reasoning = reasoning_section.strip()
