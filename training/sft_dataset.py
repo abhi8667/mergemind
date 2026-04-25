@@ -72,8 +72,14 @@ def _call_openai(prompt: str, model: str, api_key: str, max_tokens: int) -> str:
         with request.urlopen(req, timeout=60) as response:
             body = json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
-        detail = exc.read().decode("utf-8")
-        raise RuntimeError(f"OpenAI API error: {detail}") from exc
+        status = exc.code
+        if status in {429, 503}:
+            message = "OpenAI API rate limit exceeded or service unavailable."
+        elif status == 401:
+            message = "OpenAI API authentication failed."
+        else:
+            message = f"OpenAI API error (status {status})."
+        raise RuntimeError(message) from exc
     except error.URLError as exc:
         raise RuntimeError(f"OpenAI connection failed: {exc.reason}") from exc
     choices = body.get("choices", [])
@@ -93,6 +99,10 @@ def _fallback_reasoning(vehicle_state: dict[str, Any], scenario: str) -> str:
     )
 
 
+def _requires_reformat(raw_response: str) -> bool:
+    return "REASONING:" not in raw_response or "ACTION:" not in raw_response
+
+
 def _generate_response(
     prompt: str,
     model: str,
@@ -104,7 +114,7 @@ def _generate_response(
     raw_response = _call_openai(prompt, model, api_key, max_tokens=max_tokens)
     raw_response = raw_response.strip()
     action, parse_failure = parse_action(raw_response)
-    if "REASONING:" not in raw_response or "ACTION:" not in raw_response:
+    if _requires_reformat(raw_response):
         parse_failure = True
     if parse_failure:
         fallback = _fallback_reasoning(vehicle_state, scenario)

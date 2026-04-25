@@ -56,7 +56,7 @@ class MergeMindEnv:
         self.max_steps = max_steps
         self.deterministic = deterministic
         self.reward_config = reward_config or RewardConfig()
-        # Kinematic minimum stopping distance: v^2 / (2 * a_max).
+        # Kinematic safe stopping distance: v^2 / (2 * a_max).
         decel_max = max(self.reward_config.deceleration_max, 0.1)
         self.safe_distance_lookup = {
             speed: (speed**2) / (2 * decel_max) for speed in range(self.max_speed + 1)
@@ -229,7 +229,9 @@ class MergeMindEnv:
                 continue
             original_lane, lane, old_position, new_position, action = lane_updates[car_id]
             obs = observations.get(car_id, {})
-            front_gap = obs.get("front_gap", self.lane_length - car.position)
+            front_gap = obs.get(
+                "front_gap", max(0, self.lane_length - car.position)
+            )
             safe_distance = self.safe_distance_lookup[car.speed]
             unsafe_gap = front_gap < safe_distance
             survived = new_position >= self.lane_length and not car.collided

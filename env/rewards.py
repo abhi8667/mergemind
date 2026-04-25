@@ -8,7 +8,7 @@ class RewardWeights:
     survival: float = 0.4
     throughput: float = 0.4
     altruism: float = 0.15
-    reasoning: float = 0.05
+    reasoning_quality: float = 0.05
 
 
 @dataclass
@@ -82,7 +82,9 @@ def compute_reward(
     )
     reward.throughput = config.weights.throughput * throughput_metric
     reward.altruism = config.weights.altruism if altruism else 0.0
-    reward.reasoning_quality = config.weights.reasoning if reasoning_quality else 0.0
+    reward.reasoning_quality = (
+        config.weights.reasoning_quality if reasoning_quality else 0.0
+    )
     reward.parse_failure_penalty = (
         config.parse_failure_penalty if parse_failure else 0.0
     )
