@@ -4,6 +4,12 @@ from dataclasses import dataclass
 import re
 from typing import Any, Callable
 
+try:  # pragma: no cover - optional dependency
+    import wandb
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None
+
+from policy.agent import parse_action
 from policy.prompt_builder import build_llm_prompt
 
 from .mesh import MeshLayer
@@ -11,6 +17,7 @@ from .rewards import RewardConfig, RewardBreakdown, compute_reward
 from .utils import ACTIONS, seed_everything
 
 LlmPolicy = Callable[[str], str]
+REASONING_WORD_PATTERN = re.compile(r"\b\w+\b")
 
 
 @dataclass
@@ -23,7 +30,7 @@ class CarState:
     collided: bool = False
     brake_steps: int = 0
     no_progress_steps: int = 0
-    last_action: str = "hold_speed"
+    last_action: str = "MAINTAIN"
 
 
 class MergeMindEnv:
@@ -40,6 +47,7 @@ class MergeMindEnv:
         reward_config: RewardConfig | None = None,
         llm_policy: LlmPolicy | None = None,
         scenario: str | None = None,
+        log_wandb: bool = True,
     ) -> None:
         self.lane_length = lane_length
         self.merge_point = merge_point
@@ -48,14 +56,23 @@ class MergeMindEnv:
         self.max_steps = max_steps
         self.deterministic = deterministic
         self.reward_config = reward_config or RewardConfig()
+        # Kinematic safe stopping distance: v^2 / (2 * a_max).
+        decel_max = max(self.reward_config.deceleration_max, 0.1)
+        self.safe_distance_lookup = {
+            speed: (speed**2) / (2 * decel_max) for speed in range(self.max_speed + 1)
+        }
         self.rng = seed_everything(seed)
         self.step_count = 0
         self.cars: dict[str, CarState] = {}
         self.collision_count = 0
-        self.courtesy_events = 0
+        self.altruism_events = 0
+        self.pending_altruism: dict[str, set[str]] = {}
+        self.parse_failure_total = 0
+        self.parse_failure_steps = 0
         self.mesh_layer = MeshLayer()
         self.llm_policy = llm_policy or self._default_llm_policy
         self.scenario = scenario or "Two lanes merge into a single bottleneck."
+        self.log_wandb = log_wandb
 
     def seed(self, seed: int | None) -> None:
         self.rng = seed_everything(seed)
@@ -63,7 +80,10 @@ class MergeMindEnv:
     def reset(self) -> dict[str, dict]:
         self.step_count = 0
         self.collision_count = 0
-        self.courtesy_events = 0
+        self.altruism_events = 0
+        self.pending_altruism = {}
+        self.parse_failure_total = 0
+        self.parse_failure_steps = 0
         self.mesh_layer.reset()
         self.cars = {}
         spacing = 2
@@ -94,6 +114,8 @@ class MergeMindEnv:
         rewards: dict[str, RewardBreakdown] = {}
         lane_updates: dict[str, tuple[str, str, int, int, str]] = {}
         collision_ids: set[str] = set()
+        reasoning_by_car_id: dict[str, str] = {}
+        parse_failures: dict[str, bool] = {}
 
         if actions is None:
             actions = {}
@@ -104,35 +126,68 @@ class MergeMindEnv:
                 observation = observations.get(car_id, {})
                 prompt = build_llm_prompt(observation, self.mesh_layer.broadcast_dict, self.scenario)
                 response = self.llm_policy(prompt)
-                action, reasoning = self._extract_action_and_reasoning(response)
+                action, reasoning, parse_failure = self._extract_action_and_reasoning(response)
                 if action not in ACTIONS:
-                    action = "hold_speed"
+                    action = "MAINTAIN"
                 actions[car_id] = action
                 self.mesh_layer.update_broadcast(car_id, action, reasoning)
+                reasoning_by_car_id[car_id] = reasoning
+                parse_failures[car_id] = parse_failure
+        else:
+            for car_id in observations:
+                reasoning_by_car_id[car_id] = ""
+                parse_failures[car_id] = False
+
+        if parse_failures:
+            parse_failure_count = sum(1 for failed in parse_failures.values() if failed)
+            parse_failure_rate = parse_failure_count / max(1, len(parse_failures))
+            self.parse_failure_total += parse_failure_count
+            self.parse_failure_steps += len(parse_failures)
+            if self.log_wandb and wandb and getattr(wandb, "run", None):
+                wandb.log(
+                    {
+                        "parse_failure_rate": parse_failure_rate,
+                        "parse_failure_count": parse_failure_count,
+                        "step": self.step_count,
+                    }
+                )
+        else:
+            parse_failure_count = 0
+            parse_failure_rate = 0.0
 
         for car_id, car in self.cars.items():
             if car.done:
                 continue
-            action = actions.get(car_id, "hold_speed")
+            action = actions.get(car_id, "MAINTAIN")
             if action not in ACTIONS:
-                action = "hold_speed"
+                action = "MAINTAIN"
             original_position = car.position
             original_lane = car.lane
-            if action == "accelerate":
+            obs = observations.get(car_id, {})
+            if action == "ACCELERATE":
                 car.speed = min(self.max_speed, car.speed + 1)
-            elif action in {"brake", "yield"}:
+            elif action == "DECELERATE":
                 car.speed = max(0, car.speed - 1)
-            elif action == "block":
-                car.speed = min(self.max_speed, car.speed)
-            if action == "brake":
+            elif action == "EMERGENCY_BRAKE":
+                car.speed = max(0, car.speed - 2)
+            if action in {"DECELERATE", "EMERGENCY_BRAKE"}:
                 car.brake_steps += 1
             else:
                 car.brake_steps = 0
 
+            if (
+                action in {"DECELERATE", "EMERGENCY_BRAKE"}
+                and obs.get("right_car_waiting")
+                and obs.get("lane") == "left"
+            ):
+                beneficiary_id = self._find_altruism_beneficiary(car)
+                if beneficiary_id:
+                    self.pending_altruism.setdefault(car_id, set()).add(beneficiary_id)
+
             can_merge_left, can_merge_right = self._merge_options(car)
-            if action == "merge_left" and can_merge_left:
+            if action == "LANE_LEFT" and can_merge_left:
                 car.lane = "left"
-            elif action == "merge_right" and can_merge_right:
+            elif action == "LANE_RIGHT" and can_merge_right:
                 car.lane = "right"
 
             new_position = car.position + car.speed
@@ -166,37 +221,37 @@ class MergeMindEnv:
 
         self.collision_count += len(collision_ids)
         global_clear = self._all_cleared() and self.collision_count == 0
+        active_speeds = [car.speed for car in self.cars.values() if not car.done]
+        avg_speed = float(sum(active_speeds) / len(active_speeds)) if active_speeds else 0.0
         rewards_out: dict[str, float] = {}
         for car_id, car in self.cars.items():
             if car_id not in lane_updates:
                 continue
             original_lane, lane, old_position, new_position, action = lane_updates[car_id]
             obs = observations.get(car_id, {})
-            progress = max(0, new_position - old_position)
-            merged = action.startswith("merge") and original_lane == "right" and lane == "left"
-            courtesy = action == "yield" and obs.get("right_car_waiting")
-            block = action == "block" and obs.get("right_car_waiting") and obs.get("lane") == "left"
-            tailgating = obs.get("front_gap", 2) <= 1 and car.speed > 0
-            brake_spam = car.brake_steps >= 2 and action == "brake"
-            stalled = progress == 0
-            if stalled:
-                car.no_progress_steps += 1
-            else:
-                car.no_progress_steps = 0
-            stalled = car.no_progress_steps >= 3
-            if courtesy:
-                self.courtesy_events += 1
+            front_gap = obs.get(
+                "front_gap", max(0, self.lane_length - car.position)
+            )
+            safe_distance = self.safe_distance_lookup[car.speed]
+            unsafe_gap = front_gap < safe_distance
+            survived = new_position >= self.lane_length and not car.collided
+            altruism = self._resolve_altruism_bonus(car_id)
+            if altruism:
+                self.altruism_events += 1
+            reasoning_quality = self._reasoning_quality(
+                reasoning_by_car_id.get(car_id, ""), car_id
+            )
+            parse_failure = parse_failures.get(car_id, False)
             reward = compute_reward(
                 config=self.reward_config,
                 collision=car.collided,
-                progress=progress,
-                merged=merged,
-                courtesy=courtesy,
-                block=block,
-                tailgating=tailgating,
-                brake_spam=brake_spam,
-                stalled=stalled,
-                global_clear=global_clear,
+                unsafe_gap=unsafe_gap,
+                survived=survived,
+                avg_speed=avg_speed,
+                max_speed=self.max_speed,
+                altruism=altruism,
+                reasoning_quality=reasoning_quality,
+                parse_failure=parse_failure,
             )
             rewards[car_id] = reward
             rewards_out[car_id] = reward.total
@@ -206,23 +261,25 @@ class MergeMindEnv:
             "collisions": len(collision_ids),
             "total_collisions": self.collision_count,
             "throughput": self._cleared_count(),
-            "courtesy_events": self.courtesy_events,
+            "altruism_events": self.altruism_events,
             "global_clear": global_clear,
+            "avg_speed": avg_speed,
             "step": self.step_count,
             "reward_breakdown": {car_id: breakdown.as_dict() for car_id, breakdown in rewards.items()},
+            "parse_failure_rate": parse_failure_rate,
+            "parse_failure_count": parse_failure_count,
         }
         return self.state(), rewards_out, done, info
 
     def _default_llm_policy(self, _prompt: str) -> str:
-        return "REASONING: Maintain safe spacing. ACTION: hold_speed"
+        return "REASONING: Maintain safe spacing. ACTION: MAINTAIN"
 
-    def _extract_action_and_reasoning(self, response: str) -> tuple[str, str]:
+    def _extract_action_and_reasoning(self, response: str) -> tuple[str, str, bool]:
+        action, parse_failure = parse_action(response)
         if not response:
-            return "hold_speed", ""
+            return action, "", parse_failure
         response_text = response.strip()
         response_lower = response_text.lower()
-        tokens = re.findall(r"[a-z_]+", response_lower)
-        action = next((token for token in tokens if token in ACTIONS), "hold_speed")
         reasoning = ""
         reasoning_token = "reasoning:"
         action_token = "action:"
@@ -235,7 +292,52 @@ class MergeMindEnv:
                 reasoning = reasoning_section[:cut].strip()
             else:
                 reasoning = reasoning_section.strip()
-        return action, reasoning
+        return action, reasoning, parse_failure
+
+    def _find_altruism_beneficiary(self, car: CarState) -> str | None:
+        candidates = [
+            other
+            for other in self.cars.values()
+            if not other.done and other.lane == "right" and other.position <= car.position
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda other: other.position, reverse=True)
+        return candidates[0].car_id
+
+    def _resolve_altruism_bonus(self, car_id: str) -> bool:
+        pending = self.pending_altruism.get(car_id)
+        if not pending:
+            return False
+        awarded = False
+        for beneficiary_id in list(pending):
+            beneficiary = self.cars.get(beneficiary_id)
+            if beneficiary is None:
+                pending.discard(beneficiary_id)
+                continue
+            if beneficiary.done:
+                if not beneficiary.collided:
+                    awarded = True
+                pending.discard(beneficiary_id)
+        if not pending:
+            self.pending_altruism.pop(car_id, None)
+        return awarded
+
+    def _reasoning_quality(self, reasoning: str, car_id: str) -> bool:
+        if not reasoning:
+            return False
+        words = REASONING_WORD_PATTERN.findall(reasoning)
+        if len(words) < self.reward_config.min_reasoning_words:
+            return False
+        reasoning_lower = reasoning.lower()
+        if "mesh" in reasoning_lower or "broadcast" in reasoning_lower:
+            return True
+        for other_id in self.cars:
+            if other_id == car_id:
+                continue
+            if other_id.lower() in reasoning_lower:
+                return True
+        return False
 
     def _cleared_count(self) -> int:
         return sum(1 for car in self.cars.values() if car.position >= self.lane_length and not car.collided)

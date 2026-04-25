@@ -5,11 +5,9 @@ max_episode_steps: 40
 description: Semantic multi-agent highway merge benchmark for cooperative LLM behavior.
 observation_format: json
 action_space:
-  - accelerate
-  - brake
-  - hold_speed
-  - merge_left
-  - merge_right
-  - yield
-  - block
-  - signal_merge
+  - ACCELERATE
+  - DECELERATE
+  - LANE_LEFT
+  - LANE_RIGHT
+  - MAINTAIN
+  - EMERGENCY_BRAKE

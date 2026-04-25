@@ -17,7 +17,7 @@ Traffic merges are one of the most common coordination failures in the real worl
 ---
 
 ## 3) How The Environment Works
-Two lanes merge into a single bottleneck. Each timestep, every car chooses an action (accelerate, brake, merge, yield, etc.). The environment exposes semantic observations:
+Two lanes merge into a single bottleneck. Each timestep, every car chooses an action (ACCELERATE, DECELERATE, LANE_LEFT, LANE_RIGHT, MAINTAIN, EMERGENCY_BRAKE). The environment exposes semantic observations:
 
 ```json
 {
@@ -40,15 +40,11 @@ Key mechanics:
 ---
 
 ## 4) Reward Engineering
-Composable reward components balance safety and cooperation:
-- **Safety**: `-10` collision
-- **Efficiency**: `+1` progress, `+2` successful merge
-- **Courtesy**: `+3` correct yield
-- **Anti-toxic**: `-2` blocking, `-1` tailgating, `-1` brake spam
-- **Global**: `+5` when all cars clear efficiently
-
-Safeguards:
-progress is capped, repeated stalling is penalized, and aggressive blocking is discouraged.
+Composable reward rubrics balance safety and cooperation:
+- **Individual Survival (0.4)**: collision penalties, unsafe gap penalties, and a survival bonus
+- **Collective Throughput (0.4)**: shared reward from average fleet speed
+- **Altruism Bonus (0.15)**: delayed reward for slowing/yielding that helps others clear hazards
+- **Reasoning Quality (0.05)**: bonus for detailed, neighbor-aware reasoning traces
 
 ---
 

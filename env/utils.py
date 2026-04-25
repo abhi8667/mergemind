@@ -6,16 +6,9 @@ from typing import Callable, Iterable
 
 import numpy as np
 
-ACTIONS: list[str] = [
-    "accelerate",
-    "brake",
-    "hold_speed",
-    "merge_left",
-    "merge_right",
-    "yield",
-    "block",
-    "signal_merge",
-]
+from policy.agent import ALLOWED_ACTIONS
+
+ACTIONS: list[str] = list(ALLOWED_ACTIONS)
 
 PolicyFn = Callable[[dict], str]
 
@@ -67,13 +60,13 @@ def random_policy(_: dict) -> str:
 
 def rule_based_policy(obs: dict) -> str:
     if obs.get("lane") == "right" and obs.get("can_merge"):
-        return "merge_left"
+        return "LANE_LEFT"
     if obs.get("lane") == "left" and obs.get("right_car_waiting"):
         if obs.get("front_gap", 0) > 1:
-            return "yield"
+            return "DECELERATE"
     if obs.get("speed", 0) < 2:
-        return "accelerate"
-    return "hold_speed"
+        return "ACCELERATE"
+    return "MAINTAIN"
 
 
 def qtable_policy(obs: dict, qtable: dict[str, list[float]]) -> str:
