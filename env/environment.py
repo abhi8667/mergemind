@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Callable
 
 from policy.prompt_builder import build_llm_prompt
@@ -220,7 +221,8 @@ class MergeMindEnv:
             return "hold_speed", ""
         response_text = response.strip()
         response_lower = response_text.lower()
-        action = next((act for act in ACTIONS if act in response_lower), "hold_speed")
+        tokens = re.findall(r"[a-z_]+", response_lower)
+        action = next((token for token in tokens if token in ACTIONS), "hold_speed")
         reasoning = ""
         reasoning_token = "reasoning:"
         action_token = "action:"

@@ -27,5 +27,5 @@ class MeshLayer:
             items = list(agents.items())
         else:
             items = [(agent.car_id, agent) for agent in agents]
-        items.sort(key=lambda item: abs(getattr(item[1], "position", 0) - hazard_pos))
+        items.sort(key=lambda item: abs(item[1].position - hazard_pos))
         return [agent_id for agent_id, _agent in items]
