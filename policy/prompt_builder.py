@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-SYSTEM_PROMPT = "You are an autonomous vehicle agent..."
+from .agent import ALLOWED_ACTIONS
+
+SYSTEM_PROMPT = (
+    "You are an autonomous vehicle agent coordinating a safe, efficient merge."
+)
 
 
 def build_llm_prompt(
@@ -40,5 +44,7 @@ def build_llm_prompt(
     else:
         lines.append("Upstream broadcasts: none")
 
+    action_hint = ", ".join(ALLOWED_ACTIONS)
+    lines.append(f"Allowed actions: {action_hint}")
     lines.append("Format: REASONING:  ACTION: ")
     return "\n".join(lines)

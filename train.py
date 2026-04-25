@@ -9,6 +9,7 @@ import numpy as np
 
 from env.mergemind_env import MergeMindEnv
 from env.utils import ACTIONS, key_to_str, observation_to_key, save_qtable
+from policy.agent import parse_action
 from plots import plot_reward_curve
 
 
@@ -123,7 +124,12 @@ def train_with_trl(args: argparse.Namespace) -> dict[str, Any]:
             query_texts = []
             action_map: dict[str, str] = {}
             for car_id, observation in obs.items():
-                prompt = f"Observation: {observation}\nAction:"
+                action_hint = ", ".join(ACTIONS)
+                prompt = (
+                    f"Observation: {observation}\n"
+                    f"Allowed actions: {action_hint}\n"
+                    "REASONING: \nACTION:"
+                )
                 query_texts.append(prompt)
                 action_map[car_id] = prompt
             query_tensors = tokenizer(query_texts, return_tensors="pt", padding=True).input_ids.to(args.device)
@@ -131,8 +137,7 @@ def train_with_trl(args: argparse.Namespace) -> dict[str, Any]:
             responses = tokenizer.batch_decode(response_tensors[:, query_tensors.shape[1] :], skip_special_tokens=True)
             actions = {}
             for car_id, response in zip(action_map.keys(), responses):
-                response = response.strip().lower()
-                action = next((act for act in ACTIONS if act in response), "hold_speed")
+                action, _parse_failure = parse_action(response)
                 actions[car_id] = action
             next_obs, rewards, done, _info = env.step(actions)
             reward_list = [rewards.get(car_id, 0.0) for car_id in action_map.keys()]

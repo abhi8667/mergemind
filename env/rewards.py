@@ -4,43 +4,40 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class RewardWeights:
+    survival: float = 0.4
+    throughput: float = 0.4
+    altruism: float = 0.15
+    reasoning: float = 0.05
+
+
+@dataclass
 class RewardConfig:
-    collision: float = -10.0
-    progress: float = 1.0
-    successful_merge: float = 2.0
-    courtesy: float = 3.0
-    block_penalty: float = -2.0
-    tailgating_penalty: float = -1.0
-    brake_spam_penalty: float = -1.0
-    stall_penalty: float = -0.5
-    global_clear_bonus: float = 5.0
+    weights: RewardWeights = field(default_factory=RewardWeights)
+    collision_penalty: float = -1.0
+    unsafe_gap_penalty: float = -0.5
+    survival_bonus: float = 1.0
+    parse_failure_penalty: float = -0.1
+    deceleration_max: float = 2.0
 
 
 @dataclass
 class RewardBreakdown:
-    collision: float = 0.0
-    progress: float = 0.0
-    successful_merge: float = 0.0
-    courtesy: float = 0.0
-    block_penalty: float = 0.0
-    tailgating_penalty: float = 0.0
-    brake_spam_penalty: float = 0.0
-    stall_penalty: float = 0.0
-    global_clear_bonus: float = 0.0
+    survival: float = 0.0
+    throughput: float = 0.0
+    altruism: float = 0.0
+    reasoning_quality: float = 0.0
+    parse_failure_penalty: float = 0.0
     total: float = field(init=False, default=0.0)
 
     def finalize(self) -> float:
         self.total = sum(
             [
-                self.collision,
-                self.progress,
-                self.successful_merge,
-                self.courtesy,
-                self.block_penalty,
-                self.tailgating_penalty,
-                self.brake_spam_penalty,
-                self.stall_penalty,
-                self.global_clear_bonus,
+                self.survival,
+                self.throughput,
+                self.altruism,
+                self.reasoning_quality,
+                self.parse_failure_penalty,
             ]
         )
         return self.total
@@ -48,15 +45,11 @@ class RewardBreakdown:
     def as_dict(self) -> dict[str, float]:
         self.finalize()
         return {
-            "collision": self.collision,
-            "progress": self.progress,
-            "successful_merge": self.successful_merge,
-            "courtesy": self.courtesy,
-            "block_penalty": self.block_penalty,
-            "tailgating_penalty": self.tailgating_penalty,
-            "brake_spam_penalty": self.brake_spam_penalty,
-            "stall_penalty": self.stall_penalty,
-            "global_clear_bonus": self.global_clear_bonus,
+            "survival": self.survival,
+            "throughput": self.throughput,
+            "altruism": self.altruism,
+            "reasoning_quality": self.reasoning_quality,
+            "parse_failure_penalty": self.parse_failure_penalty,
             "total": self.total,
         }
 
@@ -65,32 +58,29 @@ def compute_reward(
     *,
     config: RewardConfig,
     collision: bool,
-    progress: int,
-    merged: bool,
-    courtesy: bool,
-    block: bool,
-    tailgating: bool,
-    brake_spam: bool,
-    stalled: bool,
-    global_clear: bool,
+    unsafe_gap: bool,
+    survived: bool,
+    avg_speed: float,
+    max_speed: int,
+    altruism: bool,
+    reasoning_quality: bool,
+    parse_failure: bool,
 ) -> RewardBreakdown:
     reward = RewardBreakdown()
+    survival_metric = 0.0
     if collision:
-        reward.collision = config.collision
-    reward.progress = min(progress, 1) * config.progress
-    if merged:
-        reward.successful_merge = config.successful_merge
-    if courtesy:
-        reward.courtesy = config.courtesy
-    if block:
-        reward.block_penalty = config.block_penalty
-    if tailgating:
-        reward.tailgating_penalty = config.tailgating_penalty
-    if brake_spam:
-        reward.brake_spam_penalty = config.brake_spam_penalty
-    if stalled:
-        reward.stall_penalty = config.stall_penalty
-    if global_clear:
-        reward.global_clear_bonus = config.global_clear_bonus
+        survival_metric += config.collision_penalty
+    if unsafe_gap:
+        survival_metric += config.unsafe_gap_penalty
+    if survived:
+        survival_metric += config.survival_bonus
+    reward.survival = config.weights.survival * survival_metric
+    throughput_metric = avg_speed / max(1, max_speed)
+    reward.throughput = config.weights.throughput * throughput_metric
+    reward.altruism = config.weights.altruism if altruism else 0.0
+    reward.reasoning_quality = config.weights.reasoning if reasoning_quality else 0.0
+    reward.parse_failure_penalty = (
+        config.parse_failure_penalty if parse_failure else 0.0
+    )
     reward.finalize()
     return reward

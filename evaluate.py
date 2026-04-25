@@ -18,7 +18,7 @@ def run_policy(env: MergeMindEnv, policy: PolicyFn, episodes: int) -> dict[str, 
     collision_total = 0
     steps_total = 0
     throughput_total = 0
-    courtesy_total = 0
+    altruism_total = 0
     reward_total = 0.0
     for _ in range(episodes):
         obs = env.reset()
@@ -33,14 +33,14 @@ def run_policy(env: MergeMindEnv, policy: PolicyFn, episodes: int) -> dict[str, 
         collision_total += info.get("total_collisions", 0)
         steps_total += last_step
         throughput_total += info.get("throughput", 0)
-        courtesy_total += info.get("courtesy_events", 0)
+        altruism_total += info.get("altruism_events", 0)
         reward_total += episode_reward
     safe_episodes = max(1, episodes)
     return {
         "collision_rate": collision_total / safe_episodes,
         "average_merge_time": steps_total / safe_episodes,
         "throughput": throughput_total / safe_episodes,
-        "courtesy_score": courtesy_total / safe_episodes,
+        "altruism_score": altruism_total / safe_episodes,
         "reward_score": reward_total / safe_episodes,
     }
 

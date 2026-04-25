@@ -57,8 +57,8 @@ def load_about() -> str:
         "zipper merges on a two-lane highway bottleneck. The goal is safe, courteous, "
         "and high-throughput merges with minimal collisions.\n\n"
         "- **Environment**: Two lanes merge into one with explicit merge distance.\n"
-        "- **Agents**: Each car chooses actions like merge, yield, or block.\n"
-        "- **Rewards**: Safety + efficiency + courtesy with anti-toxicity penalties.\n"
+        "- **Agents**: Each car chooses actions like lane changes or braking.\n"
+        "- **Rewards**: Safety + throughput + altruism with reasoning-quality bonuses.\n"
     )
 
 

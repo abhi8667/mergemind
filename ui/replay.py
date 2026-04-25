@@ -37,7 +37,7 @@ def run_episode(
         "reward": sum(rewards.values()),
         "collisions": info.get("total_collisions", 0),
         "throughput": info.get("throughput", 0),
-        "courtesy_events": info.get("courtesy_events", 0),
+        "altruism_events": info.get("altruism_events", 0),
         "steps": info.get("step", step),
     }
     return ReplayResult(frames=frames, metrics=metrics)

@@ -8,7 +8,7 @@ def build_metric_cards(metrics: dict[str, float]) -> str:
         f"**Reward:** {metrics.get('reward', 0):.2f}  \n"
         f"**Collisions:** {metrics.get('collisions', 0)}  \n"
         f"**Throughput:** {metrics.get('throughput', 0)}  \n"
-        f"**Courtesy Events:** {metrics.get('courtesy_events', 0)}  \n"
+        f"**Altruism Events:** {metrics.get('altruism_events', 0)}  \n"
         f"**Steps:** {metrics.get('steps', 0)}"
     )
 
